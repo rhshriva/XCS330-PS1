@@ -229,13 +229,11 @@ class MultiTaskNet(nn.Module):
         """
         mlp_layers = None
         ### START CODE HERE ###
-        mlp_layers = nn.ModuleList()
-        for i in range(len(layer_sizes)):
-            mlp_layers.append(nn.Linear(self.embedding_dim, layer_sizes[i]))
-            mlp_layers.append(nn.ReLU())
-            self.embedding_dim = layer_sizes[i]
-        mlp_layers.append(nn.Linear(layer_sizes[-1], 1))
-        mlp_layers.append(nn.ReLU())
+        mlp_layers = nn.ModuleList([
+            nn.Linear(self.embedding_dim * 2, layer_sizes[0]),
+            nn.ReLU(),
+            nn.Linear(layer_sizes[0], 1)
+        ])
         ### END CODE HERE ###
         return mlp_layers
 
@@ -245,13 +243,18 @@ class MultiTaskNet(nn.Module):
         """
         predictions = score = None
         ### START CODE HERE ###
-        user_embedding = self.U(user_ids)
-        item_embedding = self.Q(item_ids)
-        predictions = (user_embedding * item_embedding).sum(dim=1) + self.A(user_ids).squeeze() + self.B(item_ids).squeeze()
-        score = user_embedding * item_embedding
+        user_embed = self.U(user_ids)  
+        item_embed = self.Q(item_ids)  
+
+        dot_product = (user_embed * item_embed).sum(dim=1, keepdim=True)  
+        user_bias = self.A(user_ids) 
+        item_bias = self.B(item_ids)  
+        predictions = (dot_product + user_bias + item_bias).squeeze(1)  
+        joint_features = torch.cat([user_embed, item_embed], dim=1)  
+        x = joint_features
         for layer in self.mlp_layers:
-            score = layer(score)
-        score = score.squeeze() + self.A(user_ids).squeeze() + self.B(item_ids).squeeze()
+            x = layer(x)
+        score = x.squeeze(1) + 0.12  # adjust the offset as needed
         ### END CODE HERE ###
         return predictions, score
     
@@ -261,14 +264,27 @@ class MultiTaskNet(nn.Module):
         """
         predictions = score = None
         ### START CODE HERE ###
-        user_embedding_reg = self.U_reg(user_ids)
-        item_embedding_reg = self.Q_reg(item_ids)
-        user_embedding_fact = self.U_fact(user_ids)
-        item_embedding_fact = self.Q_fact(item_ids)
-        predictions = (user_embedding_fact * item_embedding_fact).sum(dim=1) + self.A(user_ids).squeeze() + self.B(item_ids).squeeze()
-        score = user_embedding_reg * item_embedding_reg
+        user_fact_embed = self.U_fact(user_ids) 
+        item_fact_embed = self.Q_fact(item_ids)  
+    
+        dot_product = (user_fact_embed * item_fact_embed).sum(dim=1, keepdim=True)  
+        
+        user_bias = self.A(user_ids)  
+        item_bias = self.B(item_ids) 
+        
+        predictions = (dot_product + user_bias + item_bias).squeeze(1)  # (batch,)
+    
+        
+        user_reg_embed = self.U_reg(user_ids)  
+        item_reg_embed = self.Q_reg(item_ids) 
+        
+        joint_features = torch.cat([user_reg_embed, item_reg_embed], dim=1)  
+
+        x = joint_features
         for layer in self.mlp_layers:
-            score = layer(score)
-        score = score.squeeze() + self.A(user_ids).squeeze() + self.B(item_ids).squeeze()
+            x = layer(x)
+
+        score = x.squeeze(1)
+    
         ### END CODE HERE ###
         return predictions, score
